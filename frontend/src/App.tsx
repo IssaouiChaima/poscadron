@@ -154,7 +154,7 @@ export default function App() {
               {tool?.hauteur_cuivre ?? ""}
             </div>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-2">
             <p className="text-sm font-medium text-slate-700">Hauteur isolant</p>
             <div className="flex h-16 items-center justify-center rounded-md bg-industrial-700 text-lg font-semibold text-white">
               {tool?.hauteur_isolant ?? ""}
