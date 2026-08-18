@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-100 text-slate-900 antialiased;
+  background: linear-gradient(180deg, #edf6ff 0%, #f8fbff 100%);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.status-badge {
+  @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold;
+}
