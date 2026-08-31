@@ -1,8 +1,12 @@
 """
 Position Cadron — Backend API (fichier unique)
+=================================================
+Application réduite à une seule chose : l'opérateur scanne (ou tape) le
+matricule d'un outil, l'app renvoie sa hauteur cuivre et sa hauteur isolant.
+Une seule table en base : `tools`. Pas de machines, pas d'admin, pas
+d'alertes, pas de photo.
 
-
-Lancement : via `python run.py`.
+Lancement : inchangé, via `python run.py`.
 """
 
 import os
@@ -26,6 +30,7 @@ from sqlalchemy.sql import func
 class Settings(BaseSettings):
     DATABASE_URL: str
     FRONTEND_ORIGIN: str = "http://localhost:5173"
+    ADMIN_PASSWORD: str = "changeme"
 
     class Config:
         env_file = ".env"
@@ -92,6 +97,10 @@ class ToolOut(ToolBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AdminLogin(BaseModel):
+    password: str
 
 
 # =====================================================================
@@ -172,12 +181,23 @@ def delete_tool(tool_id: int, db: Session = Depends(get_db)):
     db.commit()
 
 
+@app.post("/api/admin/login")
+def admin_login(payload: AdminLogin):
+    """Vérifie le mot de passe admin unique (pas de compte, pas de session persistée
+    côté serveur — le frontend redemande ce mot de passe à chaque chargement de /admin)."""
+    if payload.password != settings.ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Mot de passe incorrect")
+    return {"ok": True}
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
 
 
 # --- Sert l'interface React déjà compilée (frontend/dist)
+# Build multi-page : index.html (opérateur) et admin.html (admin) sont deux
+# bundles indépendants générés par Vite dans le même dossier dist/.
 FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
 
 if os.path.isdir(FRONTEND_DIST):
@@ -185,6 +205,10 @@ if os.path.isdir(FRONTEND_DIST):
 
     @app.get("/{full_path:path}")
     def serve_frontend(full_path: str):
+        # Accès à l'interface admin via /admin ou /admin.html
+        if full_path in ("admin", "admin.html", "admin/"):
+            return FileResponse(os.path.join(FRONTEND_DIST, "admin.html"))
+
         candidate = os.path.join(FRONTEND_DIST, full_path)
         if full_path and os.path.isfile(candidate):
             return FileResponse(candidate)

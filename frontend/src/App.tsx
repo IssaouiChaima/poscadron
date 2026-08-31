@@ -1,9 +1,11 @@
 /**
- * Position Cadron — Frontend (fichier unique)
- * ==============================================
- * Application réduite à un seul écran opérateur : on scanne (ou tape) le
- * matricule d'un outil, l'app affiche sa hauteur cuivre et sa hauteur isolant.
- * Pas de machines, pas d'admin, pas d'alertes, pas de photo.
+ * Position Cadron — Frontend opérateur (fichier unique)
+ * ========================================================
+ * Écran unique, 100% lecture seule : on scanne (ou tape) le matricule d'un
+ * outil, l'app affiche sa hauteur cuivre et sa hauteur isolant.
+ * L'ajout/modification/suppression des outils se fait exclusivement depuis
+ * l'interface admin (Admin.tsx, accessible via /admin), indépendante de
+ * cette page.
  */
 
 import { useEffect, useRef, useState } from "react"
@@ -50,7 +52,6 @@ export default function App() {
   const [scanValue, setScanValue] = useState("")
   const [tool, setTool] = useState<Tool | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [scanLocked, setScanLocked] = useState(false)
 
   useEffect(() => {
     scanInputRef.current?.focus()
@@ -63,39 +64,24 @@ export default function App() {
     setTimeout(() => scanInputRef.current?.focus(), 50)
   }
 
-  function resetScan() {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    setScanValue("")
-    setTool(null)
-    setError(null)
-    setScanLocked(false)
-    refocus()
-  }
-
   function submitScan(rawValue: string) {
     const matricule = rawValue.trim()
-    if (!matricule || scanLocked) return
+    if (!matricule) return
 
     if (debounceRef.current) clearTimeout(debounceRef.current)
+    setScanValue("")
     setError(null)
 
     toolsApi
       .getByMatricule(matricule)
-      .then((data) => {
-        setTool(data)
-        setScanValue(matricule)
-        setScanLocked(true)
-      })
+      .then((data) => setTool(data))
       .catch(() => {
         setTool(null)
         setError("Aucun outil trouvé pour ce matricule.")
-        setScanLocked(false)
       })
   }
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    if (scanLocked) return
-
     const newValue = e.target.value
     setScanValue(newValue)
 
@@ -104,7 +90,6 @@ export default function App() {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (scanLocked) return
     if (e.key === "Enter") {
       e.preventDefault()
       submitScan(scanValue)
@@ -128,21 +113,10 @@ export default function App() {
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onBlur={refocus}
-            readOnly={scanLocked}
             autoFocus
-            className="w-full rounded-lg border-2 border-dashed border-slate-300 px-4 py-3 text-center text-lg font-mono tracking-wide text-industrial-900 focus:border-industrial-700 focus:outline-none disabled:cursor-default disabled:text-industrial-900"
+            className="w-full rounded-lg border-2 border-dashed border-slate-300 px-4 py-3 text-center text-lg font-mono tracking-wide text-industrial-900 focus:border-industrial-700 focus:outline-none"
             placeholder="En attente d'un scan..."
           />
-        </div>
-
-        <div className="mt-4 flex justify-end">
-          <button
-            type="button"
-            onClick={resetScan}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700"
-          >
-            Nouveau scan
-          </button>
         </div>
 
         {error && <p className="mt-4 text-sm text-status-out">{error}</p>}
