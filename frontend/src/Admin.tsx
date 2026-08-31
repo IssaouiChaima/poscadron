@@ -211,7 +211,7 @@ function ToolsManager({ onLogout }: { onLogout: () => void }) {
           <h2 className="mb-4 text-sm font-semibold text-slate-700">Ajouter un outil</h2>
           <form onSubmit={handleAdd} className="grid gap-4 sm:grid-cols-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Matricule</label>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Numéro d'outil</label>
               <input
                 value={newMatricule}
                 onChange={(e) => setNewMatricule(e.target.value)}

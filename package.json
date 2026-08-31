@@ -1,0 +1,15 @@
+{
+  "name": "position-cadron",
+  "version": "1.0.0",
+  "description": "Position Cadron - Full Stack Application",
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "preview": "cd frontend && npm run preview",
+    "install-all": "cd frontend && npm install"
+  },
+  "workspaces": [
+    "frontend"
+  ]
+}
