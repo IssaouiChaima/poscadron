@@ -69,7 +69,6 @@ export default function App() {
     if (!matricule) return
 
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    setScanValue("")
     setError(null)
 
     toolsApi
@@ -96,6 +95,14 @@ export default function App() {
     }
   }
 
+  function resetScan() {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    setScanValue("")
+    setTool(null)
+    setError(null)
+    scanInputRef.current?.focus()
+  }
+
   return (
     <div className="min-h-screen bg-slate-100">
       <header className="border-b border-blue-200 bg-industrial-900 text-slate-100">
@@ -105,8 +112,16 @@ export default function App() {
       </header>
 
       <main className="mx-auto max-w-3xl px-6 py-10">
-        <div className="space-y-2">
+        <div className="flex items-center justify-between">
           <label className="text-sm font-medium text-slate-700">Numéro d'outil</label>
+          <button
+            onClick={resetScan}
+            className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            Nouveau scan
+          </button>
+        </div>
+        <div className="mt-2">
           <input
             ref={scanInputRef}
             value={scanValue}
