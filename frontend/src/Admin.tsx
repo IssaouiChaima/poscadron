@@ -262,7 +262,7 @@ function ToolsManager({ onLogout }: { onLogout: () => void }) {
             <table className="w-full text-left text-sm">
               <thead className="border-b border-slate-100 text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-6 py-3">Matricule</th>
+                  <th className="px-6 py-3">Numéro </th>
                   <th className="px-6 py-3">Hauteur cuivre</th>
                   <th className="px-6 py-3">Hauteur isolant</th>
                   <th className="px-6 py-3 text-right">Actions</th>
