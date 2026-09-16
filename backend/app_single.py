@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 from pydantic_settings import BaseSettings
-from sqlalchemy import Column, DateTime, Integer, String, create_engine
+from sqlalchemy import Column, DateTime, Integer, String, UniqueConstraint, create_engine, text
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 from sqlalchemy.sql import func
 
@@ -56,15 +56,50 @@ def get_db():
         db.close()
 
 
+def ensure_database_schema():
+    """Upgrade the legacy tools table to the current schema.
+
+    Older installations only had a unique matricule column. The current app
+    expects a multi-section schema based on (matricule, section_fil), so we
+    add the missing column when needed and normalize legacy values to plain
+    section numbers before enforcing the composite unique key.
+    """
+    with engine.begin() as conn:
+        columns = conn.execute(text("SHOW COLUMNS FROM tools LIKE 'section_fil'"))
+        if columns.fetchone() is None:
+            conn.execute(text("ALTER TABLE tools ADD COLUMN section_fil VARCHAR(50) NULL AFTER matricule"))
+
+        indexes = conn.execute(text("SHOW INDEX FROM tools")).mappings().all()
+
+        for index in indexes:
+            if index["Non_unique"] == 0 and index["Column_name"] == "matricule":
+                try:
+                    conn.execute(text(f"ALTER TABLE tools DROP INDEX `{index['Key_name']}`"))
+                except Exception:
+                    pass
+
+        try:
+            conn.execute(text("ALTER TABLE tools DROP INDEX `uq_matricule_section_fil`"))
+        except Exception:
+            pass
+
+
+ensure_database_schema()
+
+
 # =====================================================================
 # 3. MODÈLE (table unique : tools)
 # =====================================================================
 
 class Tool(Base):
     __tablename__ = "tools"
+    __table_args__ = (
+        UniqueConstraint("matricule", "section_fil", name="uq_matricule_section_fil"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    matricule = Column(String(20), unique=True, nullable=False, index=True)
+    matricule = Column(String(20), nullable=False, index=True)
+    section_fil = Column(String(50), nullable=True, default=None)
     hauteur_cuivre = Column(String(50), nullable=True)
     hauteur_isolant = Column(String(50), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -77,6 +112,7 @@ class Tool(Base):
 
 class ToolBase(BaseModel):
     matricule: str
+    section_fil: str | None = None
     hauteur_cuivre: str | None = None
     hauteur_isolant: str | None = None
 
@@ -87,6 +123,7 @@ class ToolCreate(ToolBase):
 
 class ToolUpdate(BaseModel):
     matricule: str | None = None
+    section_fil: str | None = None
     hauteur_cuivre: str | None = None
     hauteur_isolant: str | None = None
 
@@ -109,8 +146,8 @@ class AdminLogin(BaseModel):
 
 app = FastAPI(
     title="Position Cadron API",
-    description="Consultation des outils (matricule → hauteur cuivre / hauteur isolant)",
-    version="2.0.0"
+    description="Consultation des outils (matricule → sections fil et leurs hauteurs)",
+    version="3.0.0"
 )
 
 app.add_middleware(
@@ -127,22 +164,38 @@ def list_tools(db: Session = Depends(get_db)):
     return db.query(Tool).all()
 
 
-@app.get("/api/tools/{matricule}", response_model=ToolOut)
+@app.get("/api/tools/{matricule}", response_model=list[ToolOut])
 def get_tool_by_matricule(matricule: str, db: Session = Depends(get_db)):
-    """Endpoint appelé après le scan : le frontend envoie le matricule lu."""
-    tool = db.query(Tool).filter(Tool.matricule == matricule).first()
-    if not tool:
+    """Endpoint appelé après le scan : le frontend envoie le matricule lu.
+    Un même matricule peut avoir plusieurs sections fil, chacune avec ses
+    propres hauteurs — on renvoie donc toutes les lignes correspondantes."""
+    tools = db.query(Tool).filter(Tool.matricule == matricule).all()
+    if not tools:
         raise HTTPException(status_code=404, detail="Aucun outil trouvé avec ce matricule")
-    return tool
+    return tools
 
 
 @app.post("/api/tools/", response_model=ToolOut, status_code=status.HTTP_201_CREATED)
 def create_tool(payload: ToolCreate, db: Session = Depends(get_db)):
     """Pas d'écran dédié dans l'app (interface opérateur = lecture seule),
     mais gardé pour peupler la base via l'API/un script."""
-    if db.query(Tool).filter(Tool.matricule == payload.matricule).first():
-        raise HTTPException(status_code=400, detail="Ce matricule existe déjà")
-    tool = Tool(**payload.model_dump())
+    normalized_section = payload.section_fil.strip() if payload.section_fil else None
+
+    if normalized_section:
+        exists = (
+            db.query(Tool)
+            .filter(Tool.matricule == payload.matricule, Tool.section_fil == normalized_section)
+            .first()
+        )
+        if exists:
+            raise HTTPException(status_code=400, detail="Cette section fil existe déjà pour ce matricule")
+
+    tool = Tool(
+        matricule=payload.matricule,
+        section_fil=normalized_section,
+        hauteur_cuivre=payload.hauteur_cuivre,
+        hauteur_isolant=payload.hauteur_isolant,
+    )
     db.add(tool)
     db.commit()
     db.refresh(tool)
@@ -156,13 +209,28 @@ def update_tool(tool_id: int, payload: ToolUpdate, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="Outil introuvable")
 
     data = payload.model_dump(exclude_unset=True)
+
+    new_matricule = data.get("matricule", tool.matricule)
+    new_section_fil = data.get("section_fil", tool.section_fil)
     if "matricule" in data and data["matricule"] is not None:
         new_matricule = data["matricule"].strip()
         if not new_matricule:
             raise HTTPException(status_code=400, detail="Le matricule ne peut pas être vide")
-        if new_matricule != tool.matricule and db.query(Tool).filter(Tool.matricule == new_matricule).first():
-            raise HTTPException(status_code=400, detail="Ce matricule existe déjà")
         data["matricule"] = new_matricule
+
+    if data.get("section_fil") is not None:
+        normalized_section = data["section_fil"].strip()
+        data["section_fil"] = normalized_section if normalized_section else None
+        new_section_fil = data["section_fil"]
+
+    if new_section_fil and (new_matricule, new_section_fil) != (tool.matricule, tool.section_fil):
+        conflict = (
+            db.query(Tool)
+            .filter(Tool.matricule == new_matricule, Tool.section_fil == new_section_fil, Tool.id != tool_id)
+            .first()
+        )
+        if conflict:
+            raise HTTPException(status_code=400, detail="Cette section fil existe déjà pour ce matricule")
 
     for field, value in data.items():
         setattr(tool, field, value)

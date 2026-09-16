@@ -2,7 +2,9 @@
  * Position Cadron — Frontend opérateur (fichier unique)
  * ========================================================
  * Écran unique, 100% lecture seule : on scanne (ou tape) le matricule d'un
- * outil, l'app affiche sa hauteur cuivre et sa hauteur isolant.
+ * outil, l'app affiche toutes ses sections fil, chacune avec sa propre
+ * hauteur cuivre et hauteur isolant (un même matricule peut avoir plusieurs
+ * sections).
  * L'ajout/modification/suppression des outils se fait exclusivement depuis
  * l'interface admin (Admin.tsx, accessible via /admin), indépendante de
  * cette page.
@@ -18,6 +20,7 @@ import axios from "axios"
 export interface Tool {
   id: number
   matricule: string
+  section_fil: string
   hauteur_cuivre: string | null
   hauteur_isolant: string | null
   created_at: string
@@ -36,7 +39,7 @@ export const apiClient = axios.create({
 
 export const toolsApi = {
   getByMatricule: (matricule: string) =>
-    apiClient.get<Tool>(`/api/tools/${matricule}`).then((r) => r.data),
+    apiClient.get<Tool[]>(`/api/tools/${matricule}`).then((r) => r.data),
 }
 
 // =====================================================================
@@ -50,7 +53,7 @@ export default function App() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [scanValue, setScanValue] = useState("")
-  const [tool, setTool] = useState<Tool | null>(null)
+  const [tools, setTools] = useState<Tool[]>([])
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -73,9 +76,9 @@ export default function App() {
 
     toolsApi
       .getByMatricule(matricule)
-      .then((data) => setTool(data))
+      .then((data) => setTools(data))
       .catch(() => {
-        setTool(null)
+        setTools([])
         setError("Aucun outil trouvé pour ce matricule.")
       })
   }
@@ -98,7 +101,7 @@ export default function App() {
   function resetScan() {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     setScanValue("")
-    setTool(null)
+    setTools([])
     setError(null)
     scanInputRef.current?.focus()
   }
@@ -136,20 +139,28 @@ export default function App() {
 
         {error && <p className="mt-4 text-sm text-status-out">{error}</p>}
 
-        <div className="mt-10 grid grid-cols-2 gap-10">
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-700">Hauteur cuivre</p>
-            <div className="flex h-16 items-center justify-center rounded-md bg-industrial-700 text-lg font-semibold text-white">
-              {tool?.hauteur_cuivre ?? ""}
+        {tools.length > 0 && (
+          <div className="mt-10 space-y-4">
+            <div className="grid grid-cols-3 gap-6 px-1 text-sm font-medium text-slate-700">
+              <p>Hauteur cuivre</p>
+              <p>Hauteur isolant</p>
+              <p>Section fil</p>
             </div>
+            {tools.map((tool, index) => (
+              <div key={`${tool.id ?? tool.matricule}-${index}`} className="grid grid-cols-3 gap-6">
+                <div className="flex h-16 items-center justify-center rounded-md bg-industrial-700 text-lg font-semibold text-white">
+                  {tool.hauteur_cuivre ?? "—"}
+                </div>
+                <div className="flex h-16 items-center justify-center rounded-md bg-industrial-700 text-lg font-semibold text-white">
+                  {tool.hauteur_isolant ?? "—"}
+                </div>
+                <div className="flex min-h-16 items-center justify-center rounded-md bg-orange-500 px-2 py-2 text-center">
+                  <span className="text-base font-semibold text-white">{tool.section_fil ?? "—"}</span>
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-700">Hauteur isolant</p>
-            <div className="flex h-16 items-center justify-center rounded-md bg-industrial-700 text-lg font-semibold text-white">
-              {tool?.hauteur_isolant ?? ""}
-            </div>
-          </div>
-        </div>
+        )}
       </main>
     </div>
   )
